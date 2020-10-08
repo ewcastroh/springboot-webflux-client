@@ -4,9 +4,11 @@ import com.ewch.springboot.webflux.client.model.Product;
 import com.ewch.springboot.webflux.client.service.ProductService;
 import java.net.URI;
 import java.util.Date;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.reactive.function.server.ServerRequest;
 import org.springframework.web.reactive.function.server.ServerResponse;
 import reactor.core.publisher.Mono;
@@ -49,7 +51,15 @@ public class ProductHandler {
 			.contentType(MediaType.APPLICATION_JSON_UTF8)
 			.body(BodyInserters.fromObject(product))
 			//.syncBody(productMono)
-		);
+		).onErrorResume(throwable -> {
+			WebClientResponseException webClientResponseException = (WebClientResponseException) throwable;
+			if (((WebClientResponseException) throwable).getStatusCode() == HttpStatus.BAD_REQUEST) {
+				return ServerResponse.badRequest()
+					.contentType(MediaType.APPLICATION_JSON_UTF8)
+					.syncBody(((WebClientResponseException) throwable).getResponseBodyAsString());
+			}
+			return Mono.error(webClientResponseException);
+		});
 	}
 
 	public Mono<ServerResponse> updateProduct(ServerRequest serverRequest) {
