@@ -4,8 +4,11 @@ import com.ewch.springboot.webflux.client.model.Product;
 import com.ewch.springboot.webflux.client.service.ProductService;
 import java.net.URI;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -30,14 +33,15 @@ public class ProductHandler {
 
 	public Mono<ServerResponse> findProductById(ServerRequest serverRequest) {
 		String id = serverRequest.pathVariable("id");
-		return productService.findProductById(id)
-			.flatMap(product -> ServerResponse.ok()
-				.contentType(MediaType.APPLICATION_JSON_UTF8)
-				.syncBody(product))
-			.switchIfEmpty(ServerResponse.notFound().build());
 		/*return ServerResponse.ok()
 			.contentType(MediaType.APPLICATION_JSON_UTF8)
 			.body(productService.findAllProducts(), Product.class);*/
+		return errorHandler(productService.findProductById(id)
+			.flatMap(product -> ServerResponse.ok()
+				.contentType(MediaType.APPLICATION_JSON_UTF8)
+				.syncBody(product))
+			.switchIfEmpty(ServerResponse.notFound().build())
+			);
 	}
 
 	public Mono<ServerResponse> createProduct(ServerRequest serverRequest) {
@@ -65,15 +69,58 @@ public class ProductHandler {
 	public Mono<ServerResponse> updateProduct(ServerRequest serverRequest) {
 		String id = serverRequest.pathVariable("id");
 		Mono<Product> productMono = serverRequest.bodyToMono(Product.class);
-		return productMono.flatMap(product -> ServerResponse.created(URI.create("/api/client/products/".concat(id)))
+		return productMono
+			.flatMap(product -> productService.updateProduct(product, id))
+			.flatMap(product -> ServerResponse.created(URI.create("/api/client/products/".concat(product.getId())))
 			.contentType(MediaType.APPLICATION_JSON_UTF8)
-			.body(productService.updateProduct(product, id), Product.class)
-		);
+			.syncBody(product))
+			.onErrorResume(throwable -> {
+				WebClientResponseException webClientResponseException = (WebClientResponseException) throwable;
+				if (((WebClientResponseException) throwable).getStatusCode() == HttpStatus.NOT_FOUND) {
+					return ServerResponse.notFound().build();
+				}
+				return Mono.error(webClientResponseException);
+			});
 	}
 
 	public Mono<ServerResponse> deleteProduct(ServerRequest serverRequest) {
 		String id = serverRequest.pathVariable("id");
-		return productService.deleteProduct(id)
-			.then(ServerResponse.noContent().build());
+		return errorHandler(productService.deleteProduct(id)
+			.then(ServerResponse.noContent().build())
+			.onErrorResume(throwable -> {
+				WebClientResponseException webClientResponseException = (WebClientResponseException) throwable;
+				if (((WebClientResponseException) throwable).getStatusCode() == HttpStatus.NOT_FOUND) {
+					return ServerResponse.notFound().build();
+				}
+				return Mono.error(webClientResponseException);
+			})
+		);
+	}
+
+	public Mono<ServerResponse> uploadProductPicture(ServerRequest serverRequest) {
+		String id = serverRequest.pathVariable("id");
+		return errorHandler(serverRequest.multipartData()
+			.map(stringPartMultiValueMap -> stringPartMultiValueMap.toSingleValueMap().get("file"))
+			.cast(FilePart.class)
+			.flatMap(filePart -> productService.uploadProductPicture(filePart, id))
+			.flatMap(product -> ServerResponse.created(URI.create("/api/client/products/upload/".concat(id)))
+				.contentType(MediaType.APPLICATION_JSON_UTF8)
+				.syncBody(product))
+		);
+	}
+
+	private Mono<ServerResponse> errorHandler(Mono<ServerResponse> serverResponseMono) {
+		return serverResponseMono
+			.onErrorResume(throwable -> {
+				WebClientResponseException webClientResponseException = (WebClientResponseException) throwable;
+				if (((WebClientResponseException) throwable).getStatusCode() == HttpStatus.NOT_FOUND) {
+					Map<String, Object> bodyStringObjectMap = new HashMap<>();
+					bodyStringObjectMap.put("error", "Product doesn't exist: ".concat(webClientResponseException.getMessage()));
+					bodyStringObjectMap.put("timestamp", new Date());
+					bodyStringObjectMap.put("status", webClientResponseException.getStatusCode().value());
+					return ServerResponse.status(HttpStatus.NOT_FOUND).syncBody(bodyStringObjectMap);
+				}
+				return Mono.error(webClientResponseException);
+			});
 	}
 }

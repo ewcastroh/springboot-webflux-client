@@ -4,7 +4,10 @@ import com.ewch.springboot.webflux.client.model.Product;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.MultipartBodyBuilder;
+import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -68,7 +71,24 @@ public class ProductServiceImpl implements ProductService {
 	public Mono<Void> deleteProduct(String id) {
 		return webClient.delete()
 			.uri("/{id}", Collections.singletonMap("id", id))
-			.exchange()
-			.then();
+			// .exchange()
+			// .then();
+			.retrieve()
+			.bodyToMono(Void.class);
+	}
+
+	@Override
+	public Mono<Product> uploadProductPicture(FilePart filePart, String id) {
+		MultipartBodyBuilder multipartBodyBuilder = new MultipartBodyBuilder();
+		multipartBodyBuilder.asyncPart("file", filePart.content(), DataBuffer.class)
+			.headers(httpHeaders -> {
+				httpHeaders.setContentDispositionFormData("file", filePart.filename());
+			});
+		return webClient.post()
+			.uri("/uploads/picture/", Collections.singletonMap("id", id))
+			.contentType(MediaType.MULTIPART_FORM_DATA)
+			.syncBody(multipartBodyBuilder.build())
+			.retrieve()
+			.bodyToMono(Product.class);
 	}
 }

@@ -18,6 +18,7 @@ public class RouterConfig {
 			.andRoute(RequestPredicates.GET("/api/client/products/{id}"), productHandler::findProductById)
 			.andRoute(RequestPredicates.POST("/api/client/products"), productHandler::createProduct)
 			.andRoute(RequestPredicates.PUT("/api/client/products/{id}"), productHandler::updateProduct)
-			.andRoute(RequestPredicates.DELETE("/api/client/products/{id}"), productHandler::deleteProduct);
+			.andRoute(RequestPredicates.DELETE("/api/client/products/{id}"), productHandler::deleteProduct)
+			.andRoute(RequestPredicates.POST("/api/client/products/upload/{id}"), productHandler::uploadProductPicture);
 	}
 }
